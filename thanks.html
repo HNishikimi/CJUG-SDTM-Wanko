@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ありがとうございました</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+      background: #f7f9fc;
+      color: #1f2937;
+    }
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .card {
+      width: min(720px, 100%);
+      background: #fff;
+      border: 1px solid #d9e2ec;
+      border-radius: 16px;
+      padding: 36px 28px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    h1 {
+      margin: 0 0 12px;
+      color: #1f4e79;
+      font-size: 2rem;
+    }
+    p { margin: 0 0 24px; font-size: 1.05rem; }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: #1f4e79;
+      color: #fff;
+    }
+    button:hover { background: #173b5c; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>ありがとうございました。</h1>
+      <p>ご回答いただき、ありがとうございました。</p>
+      <button onclick="window.close()">閉じる</button>
+    </div>
+  </div>
+</body>
+</html>

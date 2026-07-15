@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今後について</title>
+  <style>
+    :root {
+      --primary: #1f4e79;
+      --primary-dark: #173b5c;
+      --danger: #c0392b;
+      --border: #d9e2ec;
+      --bg: #f7f9fc;
+      --text: #1f2937;
+      --muted: #6b7280;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+    }
+    .container { max-width: 980px; margin: 0 auto; padding: 32px 20px 56px; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+      padding: 28px;
+    }
+    h1 { font-size: 2rem; margin: 0 0 12px; color: var(--primary); }
+    .subtitle { color: var(--muted); margin-bottom: 24px; }
+    .question {
+      margin: 18px 0 24px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fcfdff;
+    }
+    .q-title { font-weight: 700; margin-bottom: 10px; }
+    .choices {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 10px 18px;
+      margin-top: 10px;
+    }
+    .choice {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #eef2f7;
+    }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #cfd8e3;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      min-height: 110px;
+      resize: vertical;
+      background: #fff;
+    }
+    .btn-row { display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; flex-wrap: wrap; }
+    .btn { border: none; border-radius: 10px; padding: 12px 20px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: #e5edf7; color: #1f3c5a; }
+    .error { color: var(--danger); font-weight: 700; margin-top: 10px; display: none; }
+    .error.show { display: block; }
+    .hidden { display: none !important; }
+    @media (max-width: 640px) { .card { padding: 18px; } h1 { font-size: 1.6rem; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>今後について</h1>
+      <div class="subtitle">今後の利用意向や、成果物全体に対するご意見をご記入ください。</div>
+
+      <form id="futureForm">
+        <div class="question">
+          <div class="q-title">1. 今後、利用してみたい成果物があれば教えてください。（最大5つまで）</div>
+          <div id="futureChoices"></div>
+          <div class="error" id="errorFutureChoices">成果物を1つ以上、最大5つまで選択してください。</div>
+        </div>
+
+        <div class="question">
+          <div class="q-title">2. 今後、どのような成果物があったらいいと思いますか。</div>
+          <textarea id="wishFuture"></textarea>
+        </div>
+
+        <div class="question">
+          <div class="q-title">3. 成果物全体を通して、よかった点があればご記入ください。</div>
+          <textarea id="goodPoints"></textarea>
+        </div>
+
+        <div class="question">
+          <div class="q-title">4. 成果物全体を通して、改善点があればご記入ください。</div>
+          <textarea id="improvements"></textarea>
+        </div>
+
+        <div class="question">
+          <div class="q-title">5. どのようにしたら成果物を多くの方に知ってもらえるでしょうか。ご意見ありましたらご記入ください。</div>
+          <textarea id="spreadIdeas"></textarea>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="backBtn">戻る</button>
+          <button type="button" class="btn btn-primary" id="sendBtn">送信</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const allItems = [
+      'Validation of AP domain data using Xquery',
+      'Create SDTM Datasets for extended study',
+      'Therapeutic Area Standard Overview',
+      'Metadata Management',
+      'CJUG SDTM Pinnacle 21 validation team活動報告',
+      'CJUG SDTM define.xml team活動報告',
+      'Activity Report on Sub Team SDRG 1',
+      'Activity Report on Sub Team SDRG 2',
+      'レガシーデータコンバージョンチーム活動報告',
+      'Introduction of PMDA eSubmission Form A and Form B',
+      'SDTM Issueの事例収集 最終報告',
+      '知らない人が作成したデータセットの取り扱い 1',
+      '知らない人が作成したデータセットの取り扱い 2'
+    ];
+
+    const page1 = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page1') || '{}');
+    const selectedFromPage1 = page1.useful || [];
+    const available = allItems.filter(item => !selectedFromPage1.includes(item));
+
+    const futureChoices = document.getElementById('futureChoices');
+    available.forEach(item => {
+      const label = document.createElement('label');
+      label.className = 'choice';
+      label.innerHTML = `<input type="checkbox" class="futureItem" value="${item}">${item}`;
+      futureChoices.appendChild(label);
+    });
+
+    function updateLimit() {
+      const boxes = Array.from(document.querySelectorAll('.futureItem'));
+      const checked = boxes.filter(b => b.checked);
+      if (checked.length >= 5) {
+        boxes.forEach(b => { if (!b.checked) b.disabled = true; });
+      } else {
+        boxes.forEach(b => b.disabled = false);
+      }
+    }
+
+    document.addEventListener('change', (e) => {
+      if (e.target.classList.contains('futureItem')) updateLimit();
+    });
+
+    document.getElementById('backBtn').addEventListener('click', () => {
+      location.href = 'evaluation.html';
+    });
+
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const selected = Array.from(document.querySelectorAll('.futureItem:checked')).map(cb => cb.value);
+      const valid = selected.length > 0 && selected.length <= 5;
+
+      document.getElementById('errorFutureChoices').classList.toggle('show', !valid);
+      if (!valid) return;
+
+      const data = {
+        ...page1,
+        futureInterested: selected,
+        wishFuture: document.getElementById('wishFuture').value.trim(),
+        goodPoints: document.getElementById('goodPoints').value.trim(),
+        improvements: document.getElementById('improvements').value.trim(),
+        spreadIdeas: document.getElementById('spreadIdeas').value.trim(),
+        submittedAtPage2: new Date().toISOString()
+      };
+
+      localStorage.setItem('cjug_sdtm_survey_result', JSON.stringify(data));
+
+      // ここをGoogle Apps Script等の送信処理に差し替え可能
+      // fetch('YOUR_ENDPOINT', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+
+      location.href = 'thanks.html';
+    });
+  </script>
+</body>
+</html>
