@@ -214,8 +214,8 @@
         <div id="usedYesSection" class="hidden">
           <div class="question">
             <div class="q-title">4. CJUG SDTMチーム成果物のうち、役に立ったと思う成果物を選択してください。（最大5個まで）<span class="required">必須</span></div>
-            <div class="hint">成果物の詳細については、こちらをご覧ください（Link）</div>
-            <div class="error" id="errorUseful">成果物を選択してください。最大5個までです。</div>
+            <div class="hint">成果物の詳細については、<a href="list.xlsx" target="_blank" rel="noopener noreferrer">こちらの一覧表（Excel）</a>をご覧ください。</div>
+			<div class="error" id="errorUseful">成果物を選択してください。最大5個までです。</div>
             <div id="usefulOptions"></div>
           </div>
         </div>
@@ -238,6 +238,13 @@
           </div>
         </div>
 
+        <div id="otherUsefulSection" class="hidden">
+          <div class="question">
+            <div class="q-title">8. その他の成果物で役に立ったものがあれば、ご記入ください。</div>
+            <textarea id="otherUsefulText" placeholder="自由に記入してください"></textarea>
+          </div>
+        </div>
+
         <div class="btn-row">
           <button type="button" class="btn btn-primary" id="nextBtn">次へ</button>
         </div>
@@ -246,10 +253,46 @@
   </div>
 
   <script>
-  // --- Google Sheets 送信用設定（デプロイした Apps Script の URL に置換してください）
-  const SHEETS_ENDPOINT_URL = 'https://script.google.com/macros/s/AKfycbxzGguIuoElc0UMDJxPKJuufYnrB807OYF4x8Yii4cFhCc3Q-1pGm8n8N_GBYMUUqkYeg/exec';
-  // 開発時の確認用に window にも設定（DevTools で確認しやすくするため）
-  try { window.SHEETS_ENDPOINT_URL = SHEETS_ENDPOINT_URL; } catch (e) { /* ignore */ }
+
+  // 一時保存データは sessionStorage を使う。ブラウザ/タブを閉じると消える。
+  const localStorage = window.sessionStorage;
+  let suppressDraftCleanup = false;
+
+  function clearSurveyDraft() {
+    const keys = [
+      'cjug_sdtm_survey_page1',
+      'cjug_sdtm_survey_page1_active',
+      'cjug_sdtm_survey_page2',
+      'cjug_sdtm_survey_result',
+      'cjug_sdtm_survey_page3'
+    ];
+    keys.forEach(key => localStorage.removeItem(key));
+  }
+
+  window.addEventListener('beforeunload', () => {
+    if (!suppressDraftCleanup) {
+      clearSurveyDraft();
+    }
+  });
+
+  // ==========================================
+  // 【改善版】初めて開いた時（または送信を完了した後の新規回答時）に一時保存をクリアする
+  // ==========================================
+  // URLパラメータに 「?new=true」 がついている場合や、
+  // 他の回答画面から戻ってきた履歴がない場合のみクリアし、戻り遷移時はクリアしないようにします。
+  const urlParams = new URLSearchParams(window.location.search);
+  const isNewSession = urlParams.get('new') === 'true';
+
+  // 戻るボタンでの移動（evaluationやfutureからの「戻る」）の時は、直前の履歴から判定可能
+  const isBackNavigation = window.performance && 
+                           (window.performance.navigation.type === window.performance.navigation.TYPE_BACK_FORWARD);
+
+  // 初回アクセス（かつ「戻る」動作ではない）場合はストレージをクリア
+  if (isNewSession || (!isBackNavigation && !localStorage.getItem('cjug_sdtm_survey_page1_active'))) {
+    localStorage.removeItem('cjug_sdtm_survey_page1');
+    localStorage.removeItem('cjug_sdtm_survey_page2');
+    localStorage.removeItem('cjug_sdtm_survey_page3'); // futureページ分も
+  }
 
   // respondent_id を生成して localStorage に保持
   function getOrCreateRespondentId() {
@@ -308,6 +351,8 @@
   const usefulOptions = document.getElementById('usefulOptions');
   const usedYesSection = document.getElementById('usedYesSection');
   const usedNoSection = document.getElementById('usedNoSection');
+  const otherUsefulSection = document.getElementById('otherUsefulSection');
+  const otherUsefulText = document.getElementById('otherUsefulText');
   const reasonOther = document.getElementById('reasonOther');
   const reasonOtherTextWrap = document.getElementById('reasonOtherTextWrap');
   const alertBox = document.getElementById('alertBox');
@@ -337,6 +382,37 @@
 
     usefulOptions.appendChild(label);
   });
+  
+  // Q4のチェックボックス制御ロジック
+  const q4Checkboxes = usefulOptions.querySelectorAll('input[type="checkbox"]');
+  const specialNone = usefulOptions.querySelector('.special-none');
+
+  function handleQ4Change(e) {
+    // 「特にない」がクリックされた場合の処理
+    if (e.target === specialNone && specialNone.checked) {
+      q4Checkboxes.forEach(cb => {
+        if (cb !== specialNone) cb.checked = false;
+      });
+    } else if (e.target !== specialNone && e.target.checked) {
+      // 他の項目がチェックされたら「特にない」を外す
+      if (specialNone) specialNone.checked = false;
+    }
+
+    // 選択されている個数をカウント（「特にない」を除く）
+    const checkedCount = Array.from(q4Checkboxes).filter(cb => cb.checked && cb !== specialNone).length;
+
+    // 5個以上なら、チェックされていない通常項目を無効化
+    q4Checkboxes.forEach(cb => {
+      if (cb !== specialNone && !cb.checked) {
+        cb.disabled = (checkedCount >= 5);
+      }
+    });
+  }
+
+  // 生成したすべてのチェックボックスにイベントを設定
+  q4Checkboxes.forEach(cb => {
+    cb.addEventListener('change', handleQ4Change);
+  });
 
   function getSelectedRadioValue(name) {
     const el = document.querySelector(`input[name="${name}"]:checked`);
@@ -352,6 +428,13 @@
     alertBox.innerHTML = '入力内容をご確認ください。<ul>' + messages.map(m => `<li>${m}</li>`).join('') + '</ul>';
     alertBox.classList.add('show');
     alertBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function updateOtherUsefulVisibility() {
+    const used = getSelectedRadioValue('used');
+    if (otherUsefulSection) {
+      otherUsefulSection.classList.toggle('hidden', used !== 'ある');
+    }
   }
 
   // 送信状態用の簡易表示（成功/失敗メッセージ）
@@ -388,6 +471,7 @@
       const used = getSelectedRadioValue('used');
       usedYesSection.classList.toggle('hidden', used !== 'ある');
       usedNoSection.classList.toggle('hidden', used !== 'ない');
+      updateOtherUsefulVisibility();
       showAlert([]);
     });
   });
@@ -431,7 +515,7 @@
       const useful = Array.from(document.querySelectorAll('.useful:checked')).map(cb => cb.value);
       if (useful.length === 0) {
         document.getElementById('errorUseful').classList.add('show');
-        messages.push('成果物を1つ以上選択してください。');
+        messages.push('成果物を1つ以上選択してください。ない場合は「特にない」を選択してください。');
         valid = false;
       } else {
         document.getElementById('errorUseful').classList.remove('show');
@@ -449,6 +533,10 @@
       used,
       submittedAt: new Date().toISOString()
     };
+
+    data.otherUseful = (used === 'ある' && otherUsefulText)
+      ? otherUsefulText.value.trim()
+      : '';
 
     if (used === 'ある') {
       const usefulSelected = Array.from(document.querySelectorAll('.useful:checked')).map(cb => cb.value);
@@ -473,105 +561,86 @@
       });
     }
 
+    // ローカルストレージに「page1」のデータを一時保存するのみ（この時点では送信しない！）
     // respondent_id を付与して保存
-    const respondentId = getOrCreateRespondentId();
+const respondentId = getOrCreateRespondentId();
     data.respondent_id = respondentId;
+    localStorage.setItem('cjug_sdtm_survey_page1_active', 'true');
     localStorage.setItem('cjug_sdtm_survey_page1', JSON.stringify(data));
 
-    // 送信用のペイロードを作成
-    const payload = JSON.parse(JSON.stringify(data));
+    // 未利用、または「特にない」を選択した場合は評価ページをスキップしてfuture.htmlへ
+    const selectedUseful = data.useful ? data.useful.filter(v => v !== '特にない') : [];
+    const targetHref = (used === 'ない' || selectedUseful.length === 0) ? 'future.html' : 'evaluation.html';
 
-    // 送信：可能なら fetch を使って完了を待ち、タイムアウトか失敗時は sendBeacon にフォールバックする
-    async function sendSurveyAndWait(timeoutMs = 2500) {
-      if (!SHEETS_ENDPOINT_URL || SHEETS_ENDPOINT_URL === 'REPLACE_WITH_YOUR_APPS_SCRIPT_WEB_APP_URL') return;
-      const body = JSON.stringify(payload);
-
-      // try fetch first (await up to timeoutMs)
-      if (typeof fetch === 'function') {
-        try {
-          const controller = new AbortController();
-          const id = setTimeout(() => controller.abort(), timeoutMs);
-          const resp = await fetch(SHEETS_ENDPOINT_URL, {
-            method: 'POST',
-            // use text/plain to avoid CORS preflight; Apps Script can read postData.contents
-            headers: { 'Content-Type': 'text/plain' },
-            body,
-            signal: controller.signal,
-          });
-          clearTimeout(id);
-          if (resp && resp.ok) return { ok: true } ; // 成功したら終了
-        } catch (err) {
-          // fetch が失敗またはタイムアウトしたら下でフォールバック
-          console.warn('fetch send failed or timed out:', err && err.name ? err.name : err);
-        }
-      }
-
-      // フェールバック：可能なら sendBeacon
-      try {
-        if (navigator.sendBeacon) {
-          const blob = new Blob([body], { type: 'application/json' });
-          const ok = navigator.sendBeacon(SHEETS_ENDPOINT_URL, blob);
-          if (ok) return { ok: true, via: 'beacon' };
-          console.warn('sendBeacon returned false');
-        }
-        if (typeof fetch === 'function') {
-          // 最後の手段：keepalive付きfetch（ノンブロッキング）
-          fetch(SHEETS_ENDPOINT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body,
-            keepalive: true,
-          }).catch(() => {});
-          return { ok: true, via: 'fetch-keepalive' };
-        }
-      } catch (err) {
-        console.warn('Fallback send failed:', err);
-        return { ok: false, error: String(err) };
-      }
-
-      return { ok: false, error: 'unknown' };
-    }
-
-    // ボタンを無効化して送信中表示
-    const nextBtnEl = document.getElementById('nextBtn');
-    const prevText = nextBtnEl.textContent;
-    nextBtnEl.disabled = true;
-    nextBtnEl.textContent = '送信中…';
-
-    // 未利用を選択した場合は評価をスキップしてfuture.htmlへ直接遷移
-    const targetHref = (used === 'ない') ? 'future.html' : 'evaluation.html';
-
-    // 送信実行して結果を確認
-    let sendResult = { ok: false };
-    try {
-      sendResult = await sendSurveyAndWait(2500) || { ok: false };
-    } catch (e) {
-      console.warn('sendSurveyAndWait error:', e);
-      sendResult = { ok: false, error: String(e) };
-    }
-
-    // 送信失敗ならユーザーに通知して遷移を止める
-    if (!sendResult.ok) {
-      showStatusMessage('サーバへの送信が確認できませんでした。ネットワークやブラウザの設定を確認してください。', true);
-      nextBtnEl.disabled = false;
-      nextBtnEl.textContent = prevText;
-      return; // 遷移しない
-    }
-
-    // ページ2データは未利用時のみ作る
-    if (used === 'ない') {
-      const page2Data = {
-        ...data,
-        ratings: [],
-        otherUseful: '',
-        skipped_evaluation: true,
-        submittedAtEvaluation: new Date().toISOString()
-      };
-      localStorage.setItem('cjug_sdtm_survey_page2', JSON.stringify(page2Data));
-    }
-
-    // ナビゲート
+    // ページ遷移
+    suppressDraftCleanup = true;
     location.href = targetHref;
+  });
+
+  // ==========================================
+  // 【追加】「戻る」ボタンなどで戻ってきた際のデータ復元処理
+  // ==========================================
+  document.addEventListener('DOMContentLoaded', () => {
+    // ローカルストレージから一時保存データ(page1)を取得
+    const page1 = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page1') || '{}');
+
+    // 1. 所属 (affiliation) の復元
+    if (page1.affiliation) {
+      const radio = document.querySelector(`input[name="affiliation"][value="${page1.affiliation}"]`);
+      if (radio) radio.checked = true;
+    }
+
+    // 2. CDISC業務経験 (experience) の復元
+    if (page1.experience) {
+      const radio = document.querySelector(`input[name="experience"][value="${page1.experience}"]`);
+      if (radio) radio.checked = true;
+    }
+
+    // 3. 利用状況 (used) の復元と表示制御
+    if (page1.used) {
+      const radio = document.querySelector(`input[name="used"][value="${page1.used}"]`);
+      if (radio) {
+        radio.checked = true;
+        // セクションの表示/非表示を切り替え
+        usedYesSection.classList.toggle('hidden', page1.used !== 'ある');
+        usedNoSection.classList.toggle('hidden', page1.used !== 'ない');
+      }
+    }
+
+    if (otherUsefulText && page1.otherUseful) {
+      otherUsefulText.value = page1.otherUseful;
+    }
+    updateOtherUsefulVisibility();
+
+    // 4. 「利用したことがある(ある)」の場合：役に立った成果物(useful)の復元
+    if (page1.used === 'ある' && Array.isArray(page1.useful)) {
+      page1.useful.forEach(val => {
+        const chk = document.querySelector(`input[type="checkbox"].useful[value="${val}"]`);
+        if (chk) {
+          chk.checked = true;
+        }
+      });
+      // 5個上限チェック制限や「特にない」の排他制御ロジックを一度適用
+      const eventMock = { target: document.querySelector('.useful:checked') || {} };
+      handleQ4Change(eventMock);
+    }
+
+    // 5. 「利用したことがない(ない)」の場合：未利用理由(notUsedReason)の復元
+    if (page1.used === 'ない') {
+      if (Array.isArray(page1.not_used_reasons_selected)) {
+        page1.not_used_reasons_selected.forEach(val => {
+          const chk = document.querySelector(`input[type="checkbox"].notUsedReason[value="${val}"]`);
+          if (chk) chk.checked = true;
+        });
+      }
+      // その他理由テキストボックスの表示切り替えと文字の復元
+      if (page1.not_used_reasons_other_checked) {
+        if (reasonOther) reasonOther.checked = true;
+        if (reasonOtherTextWrap) reasonOtherTextWrap.classList.remove('hidden');
+        const otherText = document.getElementById('reasonOtherText');
+        if (otherText) otherText.value = page1.not_used_reasons_other_text || '';
+      }
+    }
   });
 </script>
 </body>

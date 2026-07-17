@@ -38,7 +38,15 @@
       border-radius: 12px;
       background: #fcfdff;
     }
-    .q-title { font-weight: 700; margin-bottom: 10px; }
+    .q-title {
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .required {
+      color: var(--danger);
+      font-weight: 700;
+      margin-left: 6px;
+    }
     .choices {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -53,6 +61,14 @@
       border-radius: 10px;
       background: #fff;
       border: 1px solid #eef2f7;
+    }
+    .group-label {
+      font-weight: 700;
+      margin: 18px 0 10px;
+      color: #334155;
+    }
+    .title-bold {
+      font-weight: 700;
     }
     textarea {
       width: 100%;
@@ -70,6 +86,17 @@
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-primary:hover { background: var(--primary-dark); }
     .btn-secondary { background: #e5edf7; color: #1f3c5a; }
+    .alert-box {
+      display: none;
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid #f0b35a;
+      background: #fff4e5;
+      color: #8a4b00;
+      font-weight: 700;
+    }
+    .alert-box.show { display: block; }
     .error { color: var(--danger); font-weight: 700; margin-top: 10px; display: none; }
     .error.show { display: block; }
     .hidden { display: none !important; }
@@ -82,31 +109,34 @@
       <h1>今後について</h1>
       <div class="subtitle">今後の利用意向や、成果物全体に対するご意見をご記入ください。</div>
 
+      <div id="alertBox" class="alert-box"></div>
+
       <form id="futureForm">
-        <div class="question">
-          <div class="q-title">1. 今後、利用してみたい成果物があれば教えてください。（最大5つまで）</div>
+        <div class="question" id="futureChoicesQuestion">
+          <div class="q-title">1. 今後、利用してみたい成果物があれば教えてください。（最大5つまで）<span class="required">必須</span></div>
+          <div class="hint">成果物の詳細については、<a href="list.xlsx" target="_blank" rel="noopener noreferrer">こちらの一覧表（Excel）</a>をご覧ください。</div>
+          <div class="error" id="errorFutureLimit">成果物を選択してください。最大5個までです。</div>
           <div id="futureChoices"></div>
-          <div class="error" id="errorFutureChoices">成果物を1つ以上、最大5つまで選択してください。</div>
         </div>
 
         <div class="question">
           <div class="q-title">2. 今後、どのような成果物があったらいいと思いますか。</div>
-          <textarea id="wishFuture"></textarea>
+          <textarea id="wishFuture"placeholder="自由に記入してください"></textarea>
         </div>
 
         <div class="question">
           <div class="q-title">3. 成果物全体を通して、よかった点があればご記入ください。</div>
-          <textarea id="goodPoints"></textarea>
+          <textarea id="goodPoints" placeholder="自由に記入してください"></textarea>
         </div>
 
         <div class="question">
           <div class="q-title">4. 成果物全体を通して、改善点があればご記入ください。</div>
-          <textarea id="improvements"></textarea>
+          <textarea id="improvements" placeholder="自由に記入してください"></textarea>
         </div>
 
         <div class="question">
-          <div class="q-title">5. どのようにしたら成果物を多くの方に知ってもらえるでしょうか。ご意見ありましたらご記入ください。</div>
-          <textarea id="spreadIdeas"></textarea>
+          <div class="q-title">5. どのようにしたら成果物を多くの方に知ってもらえるでしょうか。</div>
+          <textarea id="spreadIdeas" placeholder="いいアイデアがあれば是非！"></textarea>
         </div>
 
         <div class="btn-row">
@@ -118,75 +148,267 @@
   </div>
 
   <script>
-    const allItems = [
-      'Validation of AP domain data using Xquery',
-      'Create SDTM Datasets for extended study',
-      'Therapeutic Area Standard Overview',
-      'Metadata Management',
-      'CJUG SDTM Pinnacle 21 validation team活動報告',
-      'CJUG SDTM define.xml team活動報告',
-      'Activity Report on Sub Team SDRG 1',
-      'Activity Report on Sub Team SDRG 2',
-      'レガシーデータコンバージョンチーム活動報告',
-      'Introduction of PMDA eSubmission Form A and Form B',
-      'SDTM Issueの事例収集 最終報告',
-      '知らない人が作成したデータセットの取り扱い 1',
-      '知らない人が作成したデータセットの取り扱い 2'
+    // 一時保存データは sessionStorage を使う。ブラウザ/タブを閉じると消える。
+    const localStorage = window.sessionStorage;
+    let suppressDraftCleanup = false;
+
+    // Google Apps Script の Web App URL を設定。
+    const SHEETS_ENDPOINT_URL = 'https://script.google.com/macros/s/AKfycbxzGguIuoElc0UMDJxPKJuufYnrB807OYF4x8Yii4cFhCc3Q-1pGm8n8N_GBYMUUqkYeg/exec';
+    const SECRET_TOKEN = 'CJUG_SDTM_Wanko';
+
+    function clearSurveyDraft() {
+      const keys = [
+        'cjug_sdtm_survey_page1',
+        'cjug_sdtm_survey_page1_active',
+        'cjug_sdtm_survey_page2',
+        'cjug_sdtm_survey_result',
+        'cjug_sdtm_survey_page3'
+      ];
+      keys.forEach(key => localStorage.removeItem(key));
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (!suppressDraftCleanup) {
+        clearSurveyDraft();
+      }
+    });
+
+    const artifactItems = [
+      { group: '特にない', title: '特にない', desc: '' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2019) Activity Report on Sub Team (Study Data Reviewer’s Guide)', desc: '模擬試験に基づくSDRGの構成・記載方針・実務上の検討ポイントを整理' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2019) 承認申請を目的とした中間解析時のSDTMデータセットに関する検討', desc: '中間解析データでの申請における、未確定データやカットオフ処理等の作成方針を整理' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2020) Form A Bの作成を含む申請準備業務の外部委託', desc: 'Form A/B作成および申請準備業務の外部委託実態・課題分析' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2020) Introduction of PMDA eSubmission Form A and Form B', desc: 'PMDAへの電子データ提出に必要なForm A/Bの役割・記載内容・プロセスを解説' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2020) レガシーデータコンバージョンチーム活動報告', desc: 'Legacy Data Conversionにおける実務課題（データ入手、辞書不明、単位不一致など）と対応策を整理' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2020) 知らない人が作成したデータセットの取り扱い', desc: '外部・過去作成のデータセットを調査し、当局提出可能な状態にする判断・対応法を体系化' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2026) cSDRG 記述方法Tips集 Version1.0～3.0', desc: 'cSDRGの記載方法とForm A・PMDA要求事項・FDA要求事項対応の実務整理' },
+      { group: 'A. 申請準備・規制当局対応（Form A/B, SDRG, PMDA等）', title: '(2026) FDAに提出したSDTMをPMDAに提出するためのTips集', desc: 'FDA提出済みSDTMパッケージのPMDA提出対応における実務課題と対応整理' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2016) Create SDTM Datasets for extended study', desc: '延長試験のSDTM設計における課題を整理し、分割と統合の比較を通じて規制要件に耐える設計方針を提示' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2016) Validation of AP domain data using Xquery', desc: 'Pinnacle21で困難なAPドメイン等の検証を、XQueryで直接行うプロセスを提示' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2017) RACEについて', desc: 'RACEデータの定義、収集方法、CT制約、Pinnacle21との整合性など実務上の対応方針を整理' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2017) SDTM QCの手引き', desc: 'リソース制約下で品質を確保するための、効率的なSDTM QC戦略と手法を提示' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2017) SDTM Validation rules 1.0 VS FDA Validator Rule 1.0and1.1', desc: 'SDTMとFDAの各検証ルールの差異を分析し、規制要件におけるValidationの本質を整理' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2017) Trial Design Datasets Programチーム活動報告', desc: 'Trial Design Dataset（TA/TE/TI/TS/TV）の仕様作成・データ生成・Validation実施における設計方針と課題整理' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2018) Trial Design Datasets 試験終了時の整備', desc: '試験進行後のTrial Design修正事例を通じ、設計・運用課題と対策を整理' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2019) CJUG SDTM Pinnacle 21 validation team活動報告', desc: '模擬試験データに対して、Pinnacle21検証でのエラー分析・修正・SDRG用Issue Summary作成プロセスを整理' },
+      { group: 'B. SDTM実装・バリデーション（Xquery, P21, VLM等）', title: '(2020) SDTM Issueの事例収集_最終報告', desc: 'Pinnacle21で検出不能なマッピングミス等の不備事例を収集し、原因と対策を整理' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2016) Metadata Management', desc: 'SDTM/ADaMのメタデータ管理、特にCTのバージョン管理と統一戦略の方針を整理' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2016) Therapeutic Area Standard Overview', desc: 'TAUGの役割と構造、SDTMIGで扱えない疾患特有データの標準化・実装指針を提供' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2016) Value Level Metadata検討', desc: 'Define-XMLやPMDAルールの不整合を整理し、最適なVLM設計を提示' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2016) CDISC Standards Japanese Translation Activities Updates', desc: 'CDISC標準の日本語翻訳プロセスおよび翻訳品質・レビュー体制の実務課題整理' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2017) How to manage of best practices for Controlled Terminology', desc: '組織横断でのCT管理プロセスや独自IDによる一貫管理のベストプラクティスを提示' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2017) Custom Domainチーム活動報告', desc: 'Custom Domainの作成実態・活用領域および運用体制に関する実態調査' },
+      { group: 'C. 標準管理・戦略（CT, メタデータ, TAUG等）', title: '(2019) CJUG SDTM define.xml team活動報告', desc: 'define.xml作成時のメタデータ整合性やバリデーション等の実務課題を整理' },
+      { group: 'D. 高度活用・新技術（R, AI, 中央モニタリング等）', title: '(2017) Rチーム活動報告', desc: 'SDTMデータのR活用による加工・可視化・レポート作成およびデータ管理業務効率化の実践整理' },
+      { group: 'D. 高度活用・新技術（R, AI, 中央モニタリング等）', title: '(2018) CJUG SDTM データレビューチーム報告', desc: 'SDTMデータに中央モニタリングや可視化ツール（Power BI）を活用し、安全性や試験進捗を分析する実践方法を報告' },
+      { group: 'D. 高度活用・新技術（R, AI, 中央モニタリング等）', title: '(2018) AIチーム報告', desc: 'SDTMを活用した中央モニタリング（RBM）および安全性・試験進捗分析の実践整理' },
+      { group: 'E. 基礎・Q&A（初心者資料, PhUSE等）', title: '(2016) PhUSE Q&A', desc: 'PhUSE運営・国際展開方針およびSDTM実務Q&A整理' },
+      { group: 'E. 基礎・Q&A（初心者資料, PhUSE等）', title: '(2019) アヒルさんチーム模擬試験', desc: '模擬試験を通じたSDTM作成からSDRG・define.xml等、全工程の課題を整理' },
+      { group: 'E. 基礎・Q&A（初心者資料, PhUSE等）', title: '(2024) CDISC標準初心者のための業務プロセス基礎資料', desc: 'CDISC標準（SDTM・ADaM）業務における成果物と依存関係の体系整理' }
     ];
 
     const page1 = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page1') || '{}');
-    const selectedFromPage1 = page1.useful || [];
-    const available = allItems.filter(item => !selectedFromPage1.includes(item));
+    const selectedFromPage1 = Array.isArray(page1.useful) ? page1.useful : [];
+    const available = artifactItems.filter(item => item.title !== '特にない' && !selectedFromPage1.includes(item.title));
 
     const futureChoices = document.getElementById('futureChoices');
-    available.forEach(item => {
+    available.forEach((item, idx) => {
+      if (item.group !== '特にない' && (idx === 0 || available[idx - 1].group !== item.group)) {
+        const gl = document.createElement('div');
+        gl.className = 'group-label';
+        gl.textContent = item.group;
+        futureChoices.appendChild(gl);
+      }
+
       const label = document.createElement('label');
       label.className = 'choice';
-      label.innerHTML = `<input type="checkbox" class="futureItem" value="${item}">${item}`;
+      label.innerHTML = `<input type="checkbox" class="futureItem" value="${item.title}"><span class="choice-text"><span class="title-bold">${item.title}</span>${item.desc ? `：${item.desc}` : ''}</span>`;
       futureChoices.appendChild(label);
     });
 
+    const specialNone = document.createElement('label');
+    specialNone.className = 'choice';
+    specialNone.innerHTML = '<input type="checkbox" class="futureItem special-none" value="特にない"><span class="choice-text">特にない</span>';
+    futureChoices.insertBefore(specialNone, futureChoices.firstChild);
+
     function updateLimit() {
       const boxes = Array.from(document.querySelectorAll('.futureItem'));
-      const checked = boxes.filter(b => b.checked);
-      if (checked.length >= 5) {
-        boxes.forEach(b => { if (!b.checked) b.disabled = true; });
+      const specialNoneCheckbox = document.querySelector('.futureItem.special-none');
+      const checkedCount = boxes.filter(b => b.checked && b !== specialNoneCheckbox).length;
+
+      if (specialNoneCheckbox && specialNoneCheckbox.checked) {
+        boxes.forEach(b => {
+          if (b !== specialNoneCheckbox) {
+            b.checked = false;
+            b.disabled = true;
+          }
+        });
+        return;
+      }
+
+      if (checkedCount >= 5) {
+        boxes.forEach(b => {
+          if (!b.checked && b !== specialNoneCheckbox) {
+            b.disabled = true;
+          }
+        });
       } else {
-        boxes.forEach(b => b.disabled = false);
+        boxes.forEach(b => {
+          if (b !== specialNoneCheckbox) {
+            b.disabled = false;
+          }
+        });
       }
     }
 
     document.addEventListener('change', (e) => {
-      if (e.target.classList.contains('futureItem')) updateLimit();
+      if (e.target.classList.contains('futureItem')) {
+        const specialNoneCheckbox = document.querySelector('.futureItem.special-none');
+        if (e.target === specialNoneCheckbox && specialNoneCheckbox.checked) {
+          document.querySelectorAll('.futureItem:not(.special-none)').forEach(cb => {
+            cb.checked = false;
+            cb.disabled = true;
+          });
+        } else if (e.target !== specialNoneCheckbox && e.target.checked && specialNoneCheckbox) {
+          specialNoneCheckbox.checked = false;
+        }
+        updateLimit();
+      }
     });
 
-    document.getElementById('backBtn').addEventListener('click', () => {
-      location.href = 'evaluation.html';
-    });
-
-    document.getElementById('sendBtn').addEventListener('click', () => {
+    // ==========================================
+    // 【送信ボタン（sendBtn）クリック時の処理】
+    // ==========================================
+    document.getElementById('sendBtn').addEventListener('click', async () => {
       const selected = Array.from(document.querySelectorAll('.futureItem:checked')).map(cb => cb.value);
-      const valid = selected.length > 0 && selected.length <= 5;
+      const hasSelection = selected.length > 0;
+      const exceedsLimit = selected.length > 5;
+      const topAlert = document.getElementById('alertBox');
+      const limitError = document.getElementById('errorFutureLimit');
 
-      document.getElementById('errorFutureChoices').classList.toggle('show', !valid);
-      if (!valid) return;
+      topAlert.classList.remove('show');
+      limitError.classList.remove('show');
 
-      const data = {
-        ...page1,
-        futureInterested: selected,
-        wishFuture: document.getElementById('wishFuture').value.trim(),
-        goodPoints: document.getElementById('goodPoints').value.trim(),
-        improvements: document.getElementById('improvements').value.trim(),
-        spreadIdeas: document.getElementById('spreadIdeas').value.trim(),
-        submittedAtPage2: new Date().toISOString()
+      if (!hasSelection) {
+        limitError.classList.add('show');
+        topAlert.textContent = '成果物を1つ以上選択してください。ない場合は「特にない」を選択してください。';
+        topAlert.classList.add('show');
+        topAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      if (exceedsLimit) {
+        limitError.classList.add('show');
+        document.getElementById('futureChoicesQuestion').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+	  
+	  // ボタンの二重押し防止・送信中インジケータ
+      const sendBtn = document.getElementById('sendBtn');
+      const originalText = sendBtn.textContent;
+      sendBtn.disabled = true;
+      sendBtn.textContent = '送信中…';
+
+      // 1. 各ページの一時保存データを読み出してマージする
+      const page1Data = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page1') || '{}');
+      const page2Data = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page2') || '{}'); // evaluation の評価データ
+
+      // 2. future.html（page3）の入力内容を整理
+      const page3Data = {
+        future_interests: selected, // 未利用アイテムから選ばれた期待項目
+        comments: [
+          `【今後取り上げてほしいテーマ】\n${document.getElementById('wishFuture').value.trim()}`,
+          `【役に立った点、良かった点】\n${document.getElementById('goodPoints').value.trim()}`,
+          `【改善を期待する点】\n${document.getElementById('improvements').value.trim()}`,
+          `【成果物を広めるための良いアイデア】\n${document.getElementById('spreadIdeas').value.trim()}`
+        ].join('\n\n'), // すべてを1つの「自由記述(comments)」フィールドに合算（GAS側の indexSheet.comments に流します）
+        submittedAll: new Date().toISOString()
       };
 
-      localStorage.setItem('cjug_sdtm_survey_result', JSON.stringify(data));
+      // 3. 全画面のデータを1つに合体
+      const payload = {
+	    token: SECRET_TOKEN,
+        ...page1Data,
+        ...page2Data, // ratings の配列などがここに含まれます
+        ...page3Data
+      };
 
-      // ここをGoogle Apps Script等の送信処理に差し替え可能
-      // fetch('YOUR_ENDPOINT', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      // 4. データ送信を実行する関数
+      async function sendAllData(timeoutMs = 5000) {
+        if (!SHEETS_ENDPOINT_URL) return { ok: false, error: 'Endpoint URL is empty' };
+        const body = JSON.stringify(payload);
 
-      location.href = 'thanks.html';
+        // ① 標準の fetch 送信
+        if (typeof fetch === 'function') {
+          try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeoutMs);
+            const resp = await fetch(SHEETS_ENDPOINT_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' }, // GAS側のCORS制限を回避するため text/plain を使用
+              body,
+              signal: controller.signal,
+            });
+            clearTimeout(id);
+            if (resp && resp.ok) return { ok: true };
+          } catch (err) {
+            console.warn('fetch failed:', err);
+          }
+       }
+
+        // ② フェイルセーフ（Beaconでのバックアップ送信）
+        try {
+          if (navigator.sendBeacon) {
+            const blob = new Blob([body], { type: 'application/json' });
+            if (navigator.sendBeacon(SHEETS_ENDPOINT_URL, blob)) return { ok: true, via: 'beacon' };
+          }
+        } catch (e) {
+          console.warn('Beacon failed:', e);
+        }
+        return { ok: false };
+      }
+
+      // 5. 送信処理の実行
+      const result = await sendAllData(5000);
+
+      if (result.ok) {
+        // 送信成功時：ローカルに溜めていた回答途中データをすべて削除してクリーンにする
+        localStorage.removeItem('cjug_sdtm_survey_page1');
+        localStorage.removeItem('cjug_sdtm_survey_page1_active');
+        localStorage.removeItem('cjug_sdtm_survey_page2');
+        localStorage.removeItem('cjug_sdtm_survey_result');
+
+        // 感謝ページへ遷移
+        suppressDraftCleanup = true;
+        location.href = 'thanks.html';
+      } else {
+        // 送信失敗時：エラー通知とボタン復帰
+        const errorMessage = SHEETS_ENDPOINT_URL
+          ? 'サーバへの送信に失敗しました。お手数ですが、通信環境をお確かめの上もう一度お試しください。'
+          : '送信先 URL が未設定です。Google Apps Script の Web App URL を設定してください。';
+        alert(errorMessage);
+        sendBtn.disabled = false;
+        sendBtn.textContent = originalText;
+      }
+    });
+
+    // ==========================================
+    // 【戻るボタン（backBtn）クリック時の処理】
+    // ==========================================
+    document.getElementById('backBtn').addEventListener('click', () => {
+      const page1 = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page1') || '{}');
+      const selectedUseful = Array.isArray(page1.useful) ? page1.useful.filter(v => v !== '特にない') : [];
+
+      // ルート分岐の条件に合わせる
+      if (page1.used === 'ない' || selectedUseful.length === 0) {
+        // 評価スキップルート（index.html へ直接戻る）
+        suppressDraftCleanup = true;
+        location.href = 'index.html';
+      } else {
+        // 評価ありルート（evaluation.html へ戻る）
+        suppressDraftCleanup = true;
+        location.href = 'evaluation.html';
+      }
     });
   </script>
 </body>
