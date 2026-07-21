@@ -100,14 +100,58 @@
     .error { color: var(--danger); font-weight: 700; margin-top: 10px; display: none; }
     .error.show { display: block; }
     .hidden { display: none !important; }
+
+    /* ローディングオーバーレイ */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      color: #fff;
+    }
+    .loading-overlay.hidden {
+      display: none !important;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.6;
+    }
+
     @media (max-width: 640px) { .card { padding: 18px; } h1 { font-size: 1.6rem; } }
   </style>
 </head>
 <body>
+  <!-- 送信中ローディングオーバーレイ -->
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+    <div class="loading-text">回答データを送信しています。<br>しばらくお待ちください...</div>
+  </div>
+
   <div class="container">
     <div class="card">
       <h1>今後について</h1>
-      <div class="subtitle">今後の利用意向や、成果物全体に対するご意見をご記入ください。</div>
+     <!--  <div class="subtitle">今後の利用意向や、成果物全体に対するご意見をご記入ください。</div> -->
 
       <div id="alertBox" class="alert-box"></div>
 
@@ -125,17 +169,7 @@
         </div>
 
         <div class="question">
-          <div class="q-title">3. 成果物全体を通して、よかった点があればご記入ください。</div>
-          <textarea id="goodPoints" placeholder="自由に記入してください"></textarea>
-        </div>
-
-        <div class="question">
-          <div class="q-title">4. 成果物全体を通して、改善点があればご記入ください。</div>
-          <textarea id="improvements" placeholder="自由に記入してください"></textarea>
-        </div>
-
-        <div class="question">
-          <div class="q-title">5. どのようにしたら成果物を多くの方に知ってもらえるでしょうか。</div>
+          <div class="q-title">3. どのようにしたら成果物を多くの方に知ってもらえるでしょうか。</div>
           <textarea id="spreadIdeas" placeholder="いいアイデアがあれば是非！"></textarea>
         </div>
 
@@ -151,6 +185,14 @@
     // 一時保存データは sessionStorage を使う。ブラウザ/タブを閉じると消える。
     const localStorage = window.sessionStorage;
     let suppressDraftCleanup = false;
+
+    function sanitizeKey(s) {
+      return String(s)
+        .normalize('NFKC')
+        .replace(/[^0-9A-Za-zぁ-んァ-ヶ一-龠]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toLowerCase();
+    }
 
     // Google Apps Script の Web App URL を設定。
     const SHEETS_ENDPOINT_URL = 'https://script.google.com/macros/s/AKfycbxzGguIuoElc0UMDJxPKJuufYnrB807OYF4x8Yii4cFhCc3Q-1pGm8n8N_GBYMUUqkYeg/exec';
@@ -273,7 +315,45 @@
           specialNoneCheckbox.checked = false;
         }
         updateLimit();
+        saveFutureDraft();
       }
+    });
+
+    function saveFutureDraft() {
+      const selected = Array.from(document.querySelectorAll('.futureItem:checked')).map(cb => cb.value);
+      const draftData = {
+        future_interests: selected,
+        future_none: selected.includes('特にない'),
+        future_has_items: selected.some(v => v !== '特にない'),
+        wish_future: document.getElementById('wishFuture').value,
+        spread_ideas: document.getElementById('spreadIdeas').value,
+        submittedAtFuture: new Date().toISOString()
+      };
+
+      localStorage.setItem('cjug_sdtm_survey_page3', JSON.stringify(draftData));
+    }
+
+    // データの復元
+    const savedPage3Draft = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page3') || '{}');
+    if (savedPage3Draft.future_interests) {
+      const interests = savedPage3Draft.future_interests;
+      document.querySelectorAll('.futureItem').forEach(cb => {
+        if (interests.includes(cb.value)) {
+          cb.checked = true;
+        }
+      });
+      updateLimit();
+    }
+    if (savedPage3Draft.wish_future !== undefined) {
+      document.getElementById('wishFuture').value = savedPage3Draft.wish_future;
+    }
+    if (savedPage3Draft.spread_ideas !== undefined) {
+      document.getElementById('spreadIdeas').value = savedPage3Draft.spread_ideas;
+    }
+
+    // テキスト入力の監視
+    ['wishFuture', 'spreadIdeas'].forEach(id => {
+      document.getElementById(id).addEventListener('input', saveFutureDraft);
     });
 
     // ==========================================
@@ -303,6 +383,12 @@
         return;
       }
 	  
+	  // 送信中ローディングオーバーレイを表示
+      const overlay = document.getElementById('loadingOverlay');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+      }
+	  
 	  // ボタンの二重押し防止・送信中インジケータ
       const sendBtn = document.getElementById('sendBtn');
       const originalText = sendBtn.textContent;
@@ -314,14 +400,15 @@
       const page2Data = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page2') || '{}'); // evaluation の評価データ
 
       // 2. future.html（page3）の入力内容を整理
+      const futureNone = selected.includes('特にない');
+      const futureHasItems = selected.some(v => v !== '特にない');
+
       const page3Data = {
         future_interests: selected, // 未利用アイテムから選ばれた期待項目
-        comments: [
-          `【今後取り上げてほしいテーマ】\n${document.getElementById('wishFuture').value.trim()}`,
-          `【役に立った点、良かった点】\n${document.getElementById('goodPoints').value.trim()}`,
-          `【改善を期待する点】\n${document.getElementById('improvements').value.trim()}`,
-          `【成果物を広めるための良いアイデア】\n${document.getElementById('spreadIdeas').value.trim()}`
-        ].join('\n\n'), // すべてを1つの「自由記述(comments)」フィールドに合算（GAS側の indexSheet.comments に流します）
+        future_none: futureNone,
+        future_has_items: futureHasItems,
+        wish_future: document.getElementById('wishFuture').value.trim(),
+        spread_ideas: document.getElementById('spreadIdeas').value.trim(),
         submittedAll: new Date().toISOString()
       };
 
@@ -377,12 +464,16 @@
         localStorage.removeItem('cjug_sdtm_survey_page1_active');
         localStorage.removeItem('cjug_sdtm_survey_page2');
         localStorage.removeItem('cjug_sdtm_survey_result');
+        localStorage.removeItem('cjug_sdtm_survey_page3');
 
         // 感謝ページへ遷移
         suppressDraftCleanup = true;
         location.href = 'thanks.html';
       } else {
-        // 送信失敗時：エラー通知とボタン復帰
+        // 送信失敗時：オーバーレイを隠してエラー通知とボタン復帰
+        if (overlay) {
+          overlay.classList.add('hidden');
+        }
         const errorMessage = SHEETS_ENDPOINT_URL
           ? 'サーバへの送信に失敗しました。お手数ですが、通信環境をお確かめの上もう一度お試しください。'
           : '送信先 URL が未設定です。Google Apps Script の Web App URL を設定してください。';
@@ -396,6 +487,7 @@
     // 【戻るボタン（backBtn）クリック時の処理】
     // ==========================================
     document.getElementById('backBtn').addEventListener('click', () => {
+      saveFutureDraft();
       const page1 = JSON.parse(localStorage.getItem('cjug_sdtm_survey_page1') || '{}');
       const selectedUseful = Array.isArray(page1.useful) ? page1.useful.filter(v => v !== '特にない') : [];
 

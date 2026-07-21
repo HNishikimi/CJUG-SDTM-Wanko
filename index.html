@@ -213,7 +213,7 @@
 
         <div id="usedYesSection" class="hidden">
           <div class="question">
-            <div class="q-title">4. CJUG SDTMチーム成果物のうち、役に立ったと思う成果物を選択してください。（最大5個まで）<span class="required">必須</span></div>
+            <div class="q-title">4_y. CJUG SDTMチーム成果物のうち、役に立ったと思う成果物を選択してください。（最大5個まで）<span class="required">必須</span></div>
             <div class="hint">成果物の詳細については、<a href="list.xlsx" target="_blank" rel="noopener noreferrer">こちらの一覧表（Excel）</a>をご覧ください。</div>
 			<div class="error" id="errorUseful">成果物を選択してください。最大5個までです。</div>
             <div id="usefulOptions"></div>
@@ -222,7 +222,7 @@
 
         <div id="usedNoSection" class="hidden">
           <div class="question">
-            <div class="q-title">7. 利用していない理由を教えてください。（複数選択可）<span class="required">必須</span></div>
+            <div class="q-title">4_n. 利用していない理由を教えてください。（複数選択可）<span class="required">必須</span></div>
             <div class="choices">
               <label class="choice"><input type="checkbox" class="notUsedReason" value="存在を知らなかった"><span class="choice-text">存在を知らなかった</span></label>
               <label class="choice"><input type="checkbox" class="notUsedReason" value="必要になる機会がなかった"><span class="choice-text">必要になる機会がなかった</span></label>
@@ -240,8 +240,20 @@
 
         <div id="otherUsefulSection" class="hidden">
           <div class="question">
-            <div class="q-title">8. その他の成果物で役に立ったものがあれば、ご記入ください。</div>
+            <div class="q-title">5_y. その他の成果物で役に立ったものがあれば、ご記入ください。</div>
             <textarea id="otherUsefulText" placeholder="自由に記入してください"></textarea>
+          </div>
+        </div>
+
+        <div id="commonFreeTextSection" class="hidden">
+          <div class="question">
+            <div class="q-title">6_y. 成果物全体を通して、よかった点があればご記入ください。</div>
+            <textarea id="goodPoints" placeholder="自由に記入してください"></textarea>
+          </div>
+
+          <div class="question">
+            <div class="q-title">7_y. 成果物全体を通して、改善点があればご記入ください。</div>
+            <textarea id="improvements" placeholder="自由に記入してください"></textarea>
           </div>
         </div>
 
@@ -437,6 +449,14 @@
     }
   }
 
+  function updateCommonFreeTextVisibility() {
+    const used = getSelectedRadioValue('used');
+    const commonSection = document.getElementById('commonFreeTextSection');
+    if (commonSection) {
+      commonSection.classList.toggle('hidden', used !== 'ある');
+    }
+  }
+
   // 送信状態用の簡易表示（成功/失敗メッセージ）
   function showStatusMessage(text, isError = false) {
     if (!text) {
@@ -472,6 +492,7 @@
       usedYesSection.classList.toggle('hidden', used !== 'ある');
       usedNoSection.classList.toggle('hidden', used !== 'ない');
       updateOtherUsefulVisibility();
+      updateCommonFreeTextVisibility();
       showAlert([]);
     });
   });
@@ -537,6 +558,9 @@
     data.otherUseful = (used === 'ある' && otherUsefulText)
       ? otherUsefulText.value.trim()
       : '';
+
+    data.good_points = document.getElementById('goodPoints')?.value?.trim() || '';
+    data.improvements = document.getElementById('improvements')?.value?.trim() || '';
 
     if (used === 'ある') {
       const usefulSelected = Array.from(document.querySelectorAll('.useful:checked')).map(cb => cb.value);
@@ -611,6 +635,16 @@ const respondentId = getOrCreateRespondentId();
       otherUsefulText.value = page1.otherUseful;
     }
     updateOtherUsefulVisibility();
+
+    if (page1.good_points !== undefined) {
+      const el = document.getElementById('goodPoints');
+      if (el) el.value = page1.good_points;
+    }
+    if (page1.improvements !== undefined) {
+      const el = document.getElementById('improvements');
+      if (el) el.value = page1.improvements;
+    }
+    updateCommonFreeTextVisibility();
 
     // 4. 「利用したことがある(ある)」の場合：役に立った成果物(useful)の復元
     if (page1.used === 'ある' && Array.isArray(page1.useful)) {
