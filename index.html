@@ -213,8 +213,8 @@
 
         <div id="usedYesSection" class="hidden">
           <div class="question">
-            <div class="q-title">4_y. CJUG SDTMチーム成果物のうち、役に立ったと思う成果物を選択してください。（最大5個まで）<span class="required">必須</span></div>
-            <div class="hint">成果物の詳細については、<a href="list.xlsx" target="_blank" rel="noopener noreferrer">こちらの一覧表（Excel）</a>をご覧ください。</div>
+            <div class="q-title">4. CJUG SDTMチーム成果物のうち、役に立ったと思う成果物を選択してください。（最大5個まで）<span class="required">必須</span></div>
+            <div class="hint">成果物の詳細については、<a href="list.xlsx" target="_blank" rel="noopener noreferrer">こちらの一覧表（Excel）</a>をご覧ください。<br>※ Safariをお使いの場合は、「ダウンロード」ではなく「表示」でご覧ください。</div>
 			<div class="error" id="errorUseful">成果物を選択してください。最大5個までです。</div>
             <div id="usefulOptions"></div>
           </div>
@@ -222,7 +222,7 @@
 
         <div id="usedNoSection" class="hidden">
           <div class="question">
-            <div class="q-title">4_n. 利用していない理由を教えてください。（複数選択可）<span class="required">必須</span></div>
+            <div class="q-title">4. 利用していない理由を教えてください。（複数選択可）<span class="required">必須</span></div>
             <div class="choices">
               <label class="choice"><input type="checkbox" class="notUsedReason" value="存在を知らなかった"><span class="choice-text">存在を知らなかった</span></label>
               <label class="choice"><input type="checkbox" class="notUsedReason" value="必要になる機会がなかった"><span class="choice-text">必要になる機会がなかった</span></label>
@@ -240,19 +240,19 @@
 
         <div id="otherUsefulSection" class="hidden">
           <div class="question">
-            <div class="q-title">5_y. その他の成果物で役に立ったものがあれば、ご記入ください。</div>
+            <div class="q-title">5. その他の成果物で役に立ったものがあれば、ご記入ください。</div>
             <textarea id="otherUsefulText" placeholder="自由に記入してください"></textarea>
           </div>
         </div>
 
         <div id="commonFreeTextSection" class="hidden">
           <div class="question">
-            <div class="q-title">6_y. 成果物全体を通して、よかった点があればご記入ください。</div>
+            <div class="q-title">6. 成果物全体を通して、よかった点があればご記入ください。</div>
             <textarea id="goodPoints" placeholder="自由に記入してください"></textarea>
           </div>
 
           <div class="question">
-            <div class="q-title">7_y. 成果物全体を通して、改善点があればご記入ください。</div>
+            <div class="q-title">7. 成果物全体を通して、改善点があればご記入ください。</div>
             <textarea id="improvements" placeholder="自由に記入してください"></textarea>
           </div>
         </div>
@@ -574,12 +574,17 @@
     }
 
     if (used === 'ない') {
-      const notUsedReasonsSelected = Array.from(document.querySelectorAll('.notUsedReason:checked')).map(cb => cb.value);
+      const notUsedReasonInputs = Array.from(document.querySelectorAll('.notUsedReason, #reasonOther'));
+      const notUsedReasonsSelected = notUsedReasonInputs
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+
       data.not_used_reasons_selected = notUsedReasonsSelected;
+      data.not_used_reasons_joined = notUsedReasonsSelected.join('|');
       data.not_used_reasons_other_checked = !!(reasonOther && reasonOther.checked);
       data.not_used_reasons_other_text = document.getElementById('reasonOtherText')?.value?.trim() || '';
 
-      document.querySelectorAll('.notUsedReason').forEach(cb => {
+      notUsedReasonInputs.forEach(cb => {
         const key = sanitizeKey(cb.value);
         data[`not_used_reason_${key}`] = notUsedReasonsSelected.includes(cb.value);
       });
@@ -661,12 +666,17 @@ const respondentId = getOrCreateRespondentId();
 
     // 5. 「利用したことがない(ない)」の場合：未利用理由(notUsedReason)の復元
     if (page1.used === 'ない') {
-      if (Array.isArray(page1.not_used_reasons_selected)) {
-        page1.not_used_reasons_selected.forEach(val => {
-          const chk = document.querySelector(`input[type="checkbox"].notUsedReason[value="${val}"]`);
-          if (chk) chk.checked = true;
-        });
-      }
+      const restoredNotUsedReasons = Array.isArray(page1.not_used_reasons_selected)
+        ? page1.not_used_reasons_selected
+        : (typeof page1.not_used_reasons_joined === 'string' && page1.not_used_reasons_joined
+          ? page1.not_used_reasons_joined.split('|').filter(Boolean)
+          : []);
+
+      restoredNotUsedReasons.forEach(val => {
+        const chk = document.querySelector(`input[type="checkbox"].notUsedReason[value="${val}"], input[type="checkbox"]#reasonOther[value="${val}"]`);
+        if (chk) chk.checked = true;
+      });
+
       // その他理由テキストボックスの表示切り替えと文字の復元
       if (page1.not_used_reasons_other_checked) {
         if (reasonOther) reasonOther.checked = true;

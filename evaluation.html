@@ -267,12 +267,17 @@
 
     function restoreRatingsFromStorage(savedRatings) {
       if (!Array.isArray(savedRatings)) return;
-      savedRatings.forEach((ratingItem, idx) => {
-        if (!selectedUseful[idx]) return;
+      savedRatings.forEach((ratingItem) => {
+        const targetArtifact = ratingItem?.artifact;
+        if (!targetArtifact) return;
+
+        const targetIndex = selectedUseful.indexOf(targetArtifact);
+        if (targetIndex < 0) return;
+
         evalCategories.forEach(cat => {
           const value = ratingItem[cat.key];
           if (value) {
-            const radio = document.querySelector(`input[name="rating_${idx}_${cat.key}"][value="${value}"]`);
+            const radio = document.querySelector(`input[name="rating_${targetIndex}_${cat.key}"][value="${value}"]`);
             if (radio) radio.checked = true;
           }
         });
